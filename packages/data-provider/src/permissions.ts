@@ -68,6 +68,10 @@ export enum PermissionTypes {
    * Type for Shared Link Permissions
    */
   SHARED_LINKS = 'SHARED_LINKS',
+  /**
+   * Type for Conversation Permissions
+   */
+  CONVERSATIONS = 'CONVERSATIONS',
 }
 
 /**
@@ -92,6 +96,8 @@ export const PERMISSION_TYPE_INTERFACE_FIELDS: Record<PermissionTypes, string> =
   [PermissionTypes.REMOTE_AGENTS]: 'remoteAgents',
   [PermissionTypes.SKILLS]: 'skills',
   [PermissionTypes.SHARED_LINKS]: 'sharedLinks',
+  /** No corresponding `librechat.yaml` interface field; role permissions only. */
+  [PermissionTypes.CONVERSATIONS]: 'conversations',
 };
 
 /** Set of interface config field names that correspond to role permissions. */
@@ -130,6 +136,7 @@ export enum Permissions {
   USE = 'USE',
   CREATE = 'CREATE',
   UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
   READ = 'READ',
   READ_AUTHOR = 'READ_AUTHOR',
   SHARE = 'SHARE',
@@ -252,6 +259,11 @@ export const sharedLinksPermissionsSchema = z.object({
 });
 export type TSharedLinksPermissions = z.infer<typeof sharedLinksPermissionsSchema>;
 
+export const conversationsPermissionsSchema = z.object({
+  [Permissions.DELETE]: z.boolean().default(true),
+});
+export type TConversationsPermissions = z.infer<typeof conversationsPermissionsSchema>;
+
 // Define a single permissions schema that holds all permission types.
 export const permissionsSchema = z.object({
   [PermissionTypes.PROMPTS]: promptPermissionsSchema,
@@ -270,4 +282,5 @@ export const permissionsSchema = z.object({
   [PermissionTypes.REMOTE_AGENTS]: remoteAgentsPermissionsSchema,
   [PermissionTypes.SKILLS]: skillPermissionsSchema,
   [PermissionTypes.SHARED_LINKS]: sharedLinksPermissionsSchema,
+  [PermissionTypes.CONVERSATIONS]: conversationsPermissionsSchema,
 });

@@ -82,6 +82,10 @@ function ConvoOptions({
     permissionType: PermissionTypes.SHARED_LINKS,
     permission: Permissions.CREATE,
   });
+  const canDeleteConversations = useHasAccess({
+    permissionType: PermissionTypes.CONVERSATIONS,
+    permission: Permissions.DELETE,
+  });
 
   const archiveConvoMutation = useArchiveConvoMutation();
   const assignConversationToProject = useAssignConversationToProjectMutation();
@@ -337,6 +341,7 @@ function ConvoOptions({
         label: localize('com_ui_delete'),
         onClick: deleteHandler,
         icon: <Trash className="icon-sm mr-2 text-text-primary" aria-hidden="true" />,
+        show: canDeleteConversations,
         ariaHasPopup: 'dialog' as const,
         ariaControls: 'delete-conversation-dialog',
         /** NOTE: THE FOLLOWING PROPS ARE REQUIRED FOR MENU ITEMS THAT OPEN DIALOGS */
@@ -358,6 +363,7 @@ function ConvoOptions({
       handlePinClick,
       handleArchiveClick,
       canCreateSharedLinks,
+      canDeleteConversations,
       handleDuplicateClick,
       projectHandler,
       removeProjectHandler,
