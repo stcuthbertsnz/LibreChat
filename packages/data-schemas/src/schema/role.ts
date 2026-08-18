@@ -79,6 +79,9 @@ const rolePermissionsSchema = new Schema(
       [Permissions.SHARE]: { type: Boolean },
       [Permissions.SHARE_PUBLIC]: { type: Boolean },
     },
+    [PermissionTypes.CONVERSATIONS]: {
+      [Permissions.DELETE]: { type: Boolean },
+    },
   },
   { _id: false },
 );
