@@ -12,4 +12,20 @@ describe('Experimental server configuration', () => {
     expect(timeoutConfigIndex).toBeGreaterThan(-1);
     expect(listenIndex).toBeLessThan(timeoutConfigIndex);
   });
+
+  it('runs cross-tenant startup work in the system context', () => {
+    expect(source).toContain('await runAsSystem(seedDatabase);');
+    expect(source).toMatch(
+      /await runAsSystem\(async \(\) => \{\s+await performStartupChecks\(appConfig\);\s+await updateInterfacePerms/,
+    );
+  });
+
+  it('matches the standard server pre-authentication tenant routes', () => {
+    expect(source).toContain("app.use('/oauth', preAuthTenantMiddleware, routes.oauth);");
+    expect(source).toContain("app.use('/api/auth', preAuthTenantMiddleware, routes.auth);");
+    expect(source).toContain(
+      "app.use('/api/config', preAuthTenantMiddleware, optionalJwtAuth, routes.config);",
+    );
+    expect(source).toContain("app.use('/api/share', preAuthTenantMiddleware, routes.share);");
+  });
 });

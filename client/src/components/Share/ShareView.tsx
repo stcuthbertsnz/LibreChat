@@ -2,13 +2,14 @@ import { memo, useState, useCallback, useContext } from 'react';
 import Cookies from 'js-cookie';
 import { buildTree } from 'librechat-data-provider';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useRecoilState, useRecoilCallback } from 'recoil';
 import { CalendarDays, Settings, MessageSquarePlus } from 'lucide-react';
+import { useRecoilState, useRecoilValue, useRecoilCallback } from 'recoil';
 import { useGetSharedMessages } from 'librechat-data-provider/react-query';
 import {
   Spinner,
   Button,
   OGDialog,
+  Separator,
   ThemeContext,
   OGDialogTitle,
   useMediaQuery,
@@ -18,7 +19,7 @@ import {
   useToastContext,
 } from '@librechat/client';
 import { ThemeSelector, LangSelector } from '~/components/Nav/SettingsTabs/General/Selectors';
-import { cn, getResponseStatus, selectActiveBranchTail } from '~/utils';
+import { cn, DEFAULT_APP_TITLE, getResponseStatus, selectActiveBranchTail } from '~/utils';
 import { ShareMessagesProvider } from './ShareMessagesProvider';
 import { useForkSharedConvoMutation } from '~/data-provider';
 import { useGetSharedStartupConfig } from '~/data-provider';
@@ -39,7 +40,7 @@ function SharedView() {
   const { theme, setTheme } = useContext(ThemeContext);
   const { shareId } = useParams();
   const { data: config } = useGetSharedStartupConfig(shareId);
-  const { data, isLoading } = useGetSharedMessages(shareId ?? '');
+  const { data, isLoading, refetch } = useGetSharedMessages(shareId ?? '');
   const dataTree = data && buildTree({ messages: data.messages });
   const messagesTree = dataTree?.length === 0 ? null : (dataTree ?? null);
 
@@ -55,6 +56,14 @@ function SharedView() {
        *  routes them through login (with a redirect back to this share), so a
        *  generic error toast would be misleading noise before the redirect. */
       if (status === 401) {
+        return;
+      }
+      /** A 409 means the owner republished the link between the load and the
+       *  request, so the payload this fork was aimed at no longer exists. Pull
+       *  the current version in so a retry continues what is on screen. */
+      if (status === 409) {
+        void refetch();
+        showToast({ message: localize('com_ui_shared_link_updated'), status: 'warning' });
         return;
       }
       showToast({
@@ -100,12 +109,19 @@ function SharedView() {
     if (shareId == null || shareId === '') {
       return;
     }
-    forkSharedConvo({ shareId, targetMessageIndex: getActiveTargetIndex() });
-  }, [shareId, forkSharedConvo, getActiveTargetIndex]);
+    forkSharedConvo({
+      shareId,
+      targetMessageIndex: getActiveTargetIndex(),
+      shareRevision: data?.updatedAt,
+    });
+  }, [shareId, forkSharedConvo, getActiveTargetIndex, data?.updatedAt]);
 
   // configure document title
+  const chatTitleInTab = useRecoilValue(store.chatTitleInTab);
   let docTitle = '';
-  if (config?.appTitle != null && data?.title != null) {
+  if (!chatTitleInTab) {
+    docTitle = config?.appTitle || DEFAULT_APP_TITLE;
+  } else if (config?.appTitle != null && data?.title != null) {
     docTitle = `${data.title} | ${config.appTitle}`;
   } else {
     docTitle = data?.title ?? config?.appTitle ?? document.title;
@@ -196,7 +212,7 @@ function SharedView() {
   );
 
   const mainContent = (
-    <div className="transition-width relative flex h-full w-full flex-1 flex-col items-stretch overflow-hidden pt-0 dark:bg-surface-secondary">
+    <div className="transition-width relative flex h-full w-full flex-1 flex-col items-stretch overflow-hidden bg-surface-secondary pt-0">
       <div className="relative flex h-full min-h-0 flex-col text-text-primary" role="presentation">
         {content}
         {footer}
@@ -263,7 +279,7 @@ function ShareHeader({
 
   return (
     <section className="mx-auto w-full px-2 pb-3 pt-4 md:px-5 md:pb-4 md:pt-6">
-      <div className="bg-surface-primary/80 relative mx-auto flex w-full max-w-[60rem] flex-col gap-3 rounded-2xl border border-border-light px-4 py-4 shadow-xl backdrop-blur md:gap-4 md:rounded-3xl md:px-6 md:py-5">
+      <div className="relative mx-auto flex w-full max-w-[60rem] flex-col gap-3 rounded-2xl border border-border-light bg-surface-primary/80 px-4 py-4 shadow-xl backdrop-blur md:gap-4 md:rounded-3xl md:px-6 md:py-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0 space-y-1.5 md:space-y-2">
             <h1 className="line-clamp-2 break-words text-2xl font-semibold text-text-primary md:text-4xl">
@@ -325,7 +341,7 @@ function ShareHeader({
                     onChange={onThemeChange}
                     popoverClassName="z-[150]"
                   />
-                  <div className="bg-border-medium/60 h-px w-full" />
+                  <Separator orientation="horizontal" className="bg-border-medium/60" />
                   <LangSelector
                     langcode={langcode}
                     onChange={onLangChange}

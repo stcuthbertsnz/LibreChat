@@ -48,6 +48,7 @@ const {
   sendResponsesErrorResponse,
   createResponsesEventHandlers,
   createAggregatorEventHandlers,
+  getLangfuseTraceMessageFields,
   stripActivityLabelParts,
 } = require('@librechat/api');
 const {
@@ -60,7 +61,7 @@ const {
 const {
   loadAgentTools,
   loadToolsForExecution,
-  isExpectedMCPToolsUnavailableError,
+  isFatalAgentInitializationError,
 } = require('~/server/services/ToolService');
 const {
   findAccessibleResources,
@@ -100,6 +101,7 @@ function createToolLoader(signal, definitionsOnly = true) {
     provider,
     tool_options,
     tool_resources,
+    codeExecutionContext,
     accessibleMcpServerNames,
   }) {
     const agent = { id: agentId, tools, provider, model, tool_options };
@@ -110,16 +112,17 @@ function createToolLoader(signal, definitionsOnly = true) {
         agent,
         signal,
         tool_resources,
+        codeExecutionContext,
         agentResourceType: ResourceType.REMOTE_AGENT,
         definitionsOnly,
         accessibleMcpServerNames,
         streamId: null,
       });
     } catch (error) {
-      logger.error('Error loading tools for agent ' + agentId, error);
-      if (isExpectedMCPToolsUnavailableError(error)) {
+      if (isFatalAgentInitializationError(error)) {
         throw error;
       }
+      logger.error('Error loading tools for agent ' + agentId, error);
     }
   };
 }
@@ -223,6 +226,8 @@ async function saveResponseOutput(req, conversationId, responseId, response, age
     }
   }
 
+  const langfuseTraceFields = await getLangfuseTraceMessageFields(req.config, responseId);
+
   // Save the assistant message
   await db.saveMessage(
     req,
@@ -231,6 +236,7 @@ async function saveResponseOutput(req, conversationId, responseId, response, age
       conversationId,
       parentMessageId: null,
       isCreatedByUser: false,
+      ...langfuseTraceFields,
       text: responseText,
       sender: 'Agent',
       endpoint: EModelEndpoint.agents,
@@ -731,6 +737,7 @@ const executeResponse = async (envelope, { req, res }) => {
             req,
             res,
             agentResourceType: ResourceType.REMOTE_AGENT,
+            conversationId,
             toolNames,
             agent: ctx.agent ?? agent,
             signal: abortController.signal,
@@ -915,6 +922,7 @@ const executeResponse = async (envelope, { req, res }) => {
             req,
             res,
             agentResourceType: ResourceType.REMOTE_AGENT,
+            conversationId,
             toolNames,
             agent: ctx.agent ?? agent,
             signal: abortController.signal,
@@ -1093,7 +1101,12 @@ const executeResponse = async (envelope, { req, res }) => {
           ? error.status
           : 500;
       const errorType = statusCode >= 400 && statusCode < 500 ? 'invalid_request' : 'server_error';
-      sendResponsesErrorResponse(res, statusCode, errorMessage, errorType);
+      const errorCode = typeof error?.code === 'string' ? error.code : undefined;
+      if (errorCode === undefined) {
+        sendResponsesErrorResponse(res, statusCode, errorMessage, errorType);
+      } else {
+        sendResponsesErrorResponse(res, statusCode, errorMessage, errorType, errorCode);
+      }
     }
   }
 };

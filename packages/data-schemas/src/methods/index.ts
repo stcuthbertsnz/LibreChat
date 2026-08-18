@@ -44,7 +44,7 @@ import { createCategoriesMethods, type CategoriesMethods } from './categories';
 import { createPresetMethods, type PresetMethods } from './preset';
 /* Tier 2 — Moderate (service deps injected) */
 import { createConversationTagMethods, type ConversationTagMethods } from './conversationTag';
-import { createMessageMethods, type MessageMethods } from './message';
+import { createMessageMethods, CLIENT_MESSAGE_SELECT, type MessageMethods } from './message';
 import { createConversationMethods, type ConversationMethods } from './conversation';
 import { createChatProjectMethods, type ChatProjectMethods } from './chatProject';
 export type {
@@ -77,6 +77,8 @@ import {
   validateSkillBody,
   validateRelativePath,
   validateSkillFrontmatter,
+  getCanonicalSkillFrontmatterKey,
+  normalizeSkillFrontmatterKeys,
   validateSkillDescription,
   deriveStructuredFrontmatterFields,
   inferSkillFileCategory,
@@ -101,16 +103,44 @@ import type {
 import { createAgentMethods, type AgentMethods, type AgentDeps } from './agent';
 /* Config */
 import { createConfigMethods, type ConfigMethods } from './config';
+import {
+  createMCPAuthorityMethods,
+  MCPAuthorityProofError,
+  MAX_MCP_AUTHORITY_TARGETS,
+  createMCPAuthorityBootRevision,
+  createMCPAuthorityConfigSourceRevision,
+  createMCPAuthorityCredentialRevision,
+  createMCPAuthorityDatabaseSourceRevision,
+  digestMCPAuthorityValue,
+  type MCPAuthorityMethods,
+  type MCPAuthorityMethodHooks,
+  type MCPAuthorityConfigSourceDocument,
+  type MCPAuthorityCredentialSourceDocument,
+} from './mcpAuthority';
 
-export { RoleConflictError, DEFAULT_REFRESH_TOKEN_EXPIRY, DEFAULT_SESSION_EXPIRY };
+export {
+  RoleConflictError,
+  MCPAuthorityProofError,
+  MAX_MCP_AUTHORITY_TARGETS,
+  DEFAULT_REFRESH_TOKEN_EXPIRY,
+  DEFAULT_SESSION_EXPIRY,
+  createMCPAuthorityBootRevision,
+  createMCPAuthorityConfigSourceRevision,
+  createMCPAuthorityCredentialRevision,
+  createMCPAuthorityDatabaseSourceRevision,
+  digestMCPAuthorityValue,
+};
 export { tokenValues, cacheTokenValues, premiumTokenValues, defaultRate, createTxMethods };
 export { permissionBitSupersets };
+export { CLIENT_MESSAGE_SELECT };
 export {
   partitionIssues,
   validateSkillName,
   validateSkillBody,
   validateRelativePath,
   validateSkillFrontmatter,
+  getCanonicalSkillFrontmatterKey,
+  normalizeSkillFrontmatterKeys,
   validateSkillDescription,
   deriveStructuredFrontmatterFields,
   inferSkillFileCategory,
@@ -153,7 +183,8 @@ export type AllMethods = UserMethods &
   SkillMethods &
   SkillSyncMethods &
   AgentMethods &
-  ConfigMethods;
+  ConfigMethods &
+  MCPAuthorityMethods;
 
 /** Dependencies injected from the api layer into createMethods */
 export interface CreateMethodsDeps {
@@ -291,6 +322,8 @@ export function createMethods(
     ...agentMethods,
     /* Config */
     ...createConfigMethods(mongoose),
+    /* MCP authority proofs */
+    ...createMCPAuthorityMethods(mongoose),
   };
 }
 
@@ -344,4 +377,8 @@ export type {
   SkillSyncMethods,
   AgentMethods,
   ConfigMethods,
+  MCPAuthorityMethods,
+  MCPAuthorityMethodHooks,
+  MCPAuthorityConfigSourceDocument,
+  MCPAuthorityCredentialSourceDocument,
 };

@@ -20,6 +20,7 @@ services:
       - HOST=0.0.0.0
       - NODE_ENV=production
       - MEILI_HOST=http://meilisearch:7700
+      - LIBRECHAT_TEMP_CREDENTIALS_PATH=/app/data/.env.temp
       - RAG_PORT=${RAG_PORT:-8000}
       - RAG_API_URL=http://rag_api:${RAG_PORT:-8000}
       - PROXY=${PROXY:-}
@@ -40,6 +41,7 @@ services:
       - ./skill:/app/skill
       - ./branding/favicon-32x32.png:/app/client/dist/assets/favicon-32x32.png
       - ./branding/favicon-16x16.png:/app/client/dist/assets/favicon-16x16.png
+      - librechat-data:/app/data
 
   admin-panel:
     image: registry.librechat.ai/clickhouse/librechat-admin-panel:latest
@@ -114,3 +116,4 @@ services:
 
 volumes:
   pgdata2:
+  librechat-data:

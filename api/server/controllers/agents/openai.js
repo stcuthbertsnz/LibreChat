@@ -49,7 +49,7 @@ const {
   loadAgentTools,
   loadToolsForExecution,
   getAccessibleMcpServerNames,
-  isExpectedMCPToolsUnavailableError,
+  isFatalAgentInitializationError,
 } = require('~/server/services/ToolService');
 const {
   findAccessibleResources,
@@ -87,6 +87,7 @@ function createToolLoader(signal, definitionsOnly = true) {
     provider,
     tool_options,
     tool_resources,
+    codeExecutionContext,
     accessibleMcpServerNames,
   }) {
     const agent = { id: agentId, tools, provider, model, tool_options };
@@ -97,16 +98,17 @@ function createToolLoader(signal, definitionsOnly = true) {
         agent,
         signal,
         tool_resources,
+        codeExecutionContext,
         agentResourceType: ResourceType.REMOTE_AGENT,
         definitionsOnly,
         accessibleMcpServerNames,
         streamId: null, // No resumable stream for OpenAI compat
       });
     } catch (error) {
-      logger.error('Error loading tools for agent ' + agentId, error);
-      if (isExpectedMCPToolsUnavailableError(error)) {
+      if (isFatalAgentInitializationError(error)) {
         throw error;
       }
+      logger.error('Error loading tools for agent ' + agentId, error);
     }
   };
 }
@@ -508,6 +510,7 @@ const executeOpenAIChatCompletion = async (envelope, { req, res }) => {
           req,
           res,
           agentResourceType: ResourceType.REMOTE_AGENT,
+          conversationId,
           toolNames,
           agent: ctx.agent ?? agent,
           signal: abortController.signal,
@@ -891,7 +894,8 @@ const executeOpenAIChatCompletion = async (envelope, { req, res }) => {
           : 500;
       const errorType =
         statusCode >= 400 && statusCode < 500 ? 'invalid_request_error' : 'server_error';
-      sendErrorResponse(res, statusCode, errorMessage, errorType);
+      const errorCode = typeof error?.code === 'string' ? error.code : null;
+      sendErrorResponse(res, statusCode, errorMessage, errorType, errorCode);
     }
   }
 };

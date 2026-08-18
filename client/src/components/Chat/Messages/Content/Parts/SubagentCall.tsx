@@ -2,8 +2,20 @@ import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } 
 import { useRecoilValue } from 'recoil';
 import { ContentTypes, EModelEndpoint } from 'librechat-data-provider';
 import { ArrowDown, ChevronRight, Maximize2, Minimize2, Users } from 'lucide-react';
-import { OGDialog, OGDialogContent, OGDialogTitle, OGDialogDescription } from '@librechat/client';
-import type { Agents, TAttachment, TMessage, TMessageContentParts } from 'librechat-data-provider';
+import {
+  Button,
+  OGDialog,
+  OGDialogTitle,
+  OGDialogContent,
+  OGDialogDescription,
+} from '@librechat/client';
+import type {
+  Agents,
+  TAttachment,
+  TMessage,
+  TMessageContentParts,
+  PartMetadata,
+} from 'librechat-data-provider';
 import type { PartWithIndex } from '~/components/Chat/Messages/Content/ParallelContent';
 import type { SubagentTickerLine } from '~/utils/subagentContent';
 import ToolCallGroup from '~/components/Chat/Messages/Content/ToolCallGroup';
@@ -30,6 +42,9 @@ interface SubagentCallProps {
    *  tool_call's `progress` and any terminal subagent envelope — to decide
    *  whether the subagent is `running`, `cancelled`, or `finished`. */
   isSubmitting?: boolean;
+  /** Terminal lifecycle status from `on_run_step_closed`, when the run
+   *  emitted one. Authoritative over the `isSubmitting` inference. */
+  runStepStatus?: PartMetadata['runStepStatus'];
   args?: string | Record<string, unknown>;
   output?: string | null;
   attachments?: TAttachment[];
@@ -159,6 +174,7 @@ export default function SubagentCall({
   toolCallId,
   initialProgress,
   isSubmitting = false,
+  runStepStatus,
   args,
   output,
   attachments,
@@ -192,9 +208,25 @@ export default function SubagentCall({
    * - `running`: the parent is still streaming and no terminal signal has
    *   arrived yet.
    */
-  const hasError = progress?.status === 'error';
-  const finished = initialProgress >= 1 || progress?.status === 'stop' || hasError;
-  const cancelled = !isSubmitting && !finished;
+  /**
+   * A closed run step resolves the tri-state directly. It is the only signal
+   * that distinguishes "this subagent was stopped" from "the parent stream
+   * ended for some other reason", which the `!isSubmitting` inference below
+   * cannot tell apart. That inference stays as the fallback for messages
+   * saved before `on_run_step_closed` and endpoints that do not emit it.
+   */
+  const isClosed = runStepStatus != null;
+  /**
+   * An explicit `cancelled` close outranks a live `error` phase: aborting a
+   * child can surface through its execution as an error, and the run's own
+   * status is the authority on why it stopped.
+   */
+  const hasError =
+    (progress?.status === 'error' || runStepStatus === 'failed') && runStepStatus !== 'cancelled';
+  const finished = isClosed
+    ? runStepStatus !== 'cancelled'
+    : initialProgress >= 1 || progress?.status === 'stop' || hasError;
+  const cancelled = isClosed ? runStepStatus === 'cancelled' : !isSubmitting && !finished;
   const running = !finished && !cancelled;
 
   /**
@@ -471,7 +503,7 @@ export default function SubagentCall({
           <div
             className={cn(
               'flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full',
-              running && !subagentAgent && 'animate-pulse text-primary',
+              running && !subagentAgent && 'animate-pulse text-text-primary',
             )}
             aria-hidden="true"
           >
@@ -547,14 +579,15 @@ export default function SubagentCall({
 
           <div className="relative min-h-0 flex-1 border-t border-border-light bg-surface-primary">
             {!isAtBottom && (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={scrollDialogToBottom}
                 aria-label={localize('com_ui_subagent_scroll_to_bottom')}
-                className="absolute bottom-3 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border-light bg-surface-secondary text-text-secondary shadow-md transition hover:bg-surface-tertiary hover:text-text-primary"
+                className="absolute bottom-3 right-4 z-10 h-8 w-8 rounded-full border border-border-light bg-surface-secondary text-text-secondary shadow-md transition hover:bg-surface-tertiary hover:text-text-primary"
               >
                 <ArrowDown size={16} aria-hidden="true" />
-              </button>
+              </Button>
             )}
             <div
               ref={scrollRef}
@@ -641,14 +674,15 @@ function SubagentPrompt({
         <h3 id={headingId} className="text-sm font-medium text-text-primary">
           {localize('com_ui_prompt')}
         </h3>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onToggle}
           aria-controls={contentId}
           aria-expanded={expanded}
           aria-label={toggleLabel}
           title={toggleLabel}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-text-secondary transition hover:bg-surface-tertiary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-8 gap-1.5 rounded-md px-2 text-xs font-medium text-text-secondary transition hover:bg-surface-tertiary hover:text-text-primary focus:outline-none focus:ring-2 focus:ring-text-primary"
         >
           {expanded ? (
             <Minimize2 size={14} aria-hidden="true" />
@@ -656,7 +690,7 @@ function SubagentPrompt({
             <Maximize2 size={14} aria-hidden="true" />
           )}
           <span className="hidden sm:inline">{toggleLabel}</span>
-        </button>
+        </Button>
       </div>
       <div
         id={contentId}
@@ -665,7 +699,7 @@ function SubagentPrompt({
           expanded ? 'overflow-visible' : 'max-h-32 overflow-hidden',
         )}
       >
-        <div className="markdown prose prose-sm message-content light dark:prose-invert w-full max-w-none break-words text-text-primary dark:text-gray-100">
+        <div className="markdown prose prose-sm message-content light dark:prose-invert w-full max-w-none break-words text-text-primary">
           <MarkdownLite content={prompt} codeExecution={false} />
         </div>
         {!expanded && (
