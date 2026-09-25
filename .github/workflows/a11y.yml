@@ -23,10 +23,12 @@ concurrency:
 jobs:
   axe-linter:
     runs-on: ubuntu-latest
+    # Deque's hosted linter needs AXE_LINTER_API_KEY. Skip when unset so forks
+    # without a Deque subscription are not blocked on every client PR.
     if: >
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_workflow == 'true')
-    
+      ${{ secrets.AXE_LINTER_API_KEY != '' &&
+      ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.run_workflow == 'true')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: dequelabs/axe-linter-action@v2.0.0
