@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { v4 } from 'uuid';
+import { parseJsonField } from '@librechat/chat';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { QueryKeys, dataService } from 'librechat-data-provider';
+import { getToolCallIntent, useParentSubagents } from '@librechat/chat/react';
 import type { TMessage, ParentSubagentSummary } from 'librechat-data-provider';
 import type { TaskRow, ToolCallArgs } from './rows';
+import {
+  countActive,
+  buildTaskRows,
+  subagentTaskKey,
+  findToolCallArgs,
+  countFailedDelivery,
+  countAwaitingDelivery,
+} from './rows';
 import {
   useBackgroundTasksQuery,
   useSubagentControlMutation,
   useCancelBackgroundTasksMutation,
 } from '~/data-provider';
-import { useParentSubagents } from '~/components/Chat/Subagents/ParentSubagentsProvider';
-import { buildTaskRows, countActive, findToolCallArgs, subagentTaskKey } from './rows';
-import parseJsonField from '~/components/Chat/Messages/Content/Parts/parseJsonField';
-import { getToolCallIntent } from '~/components/Chat/Messages/Content/Parts/intent';
 
 const noThreads: ReadonlyMap<string, ParentSubagentSummary> = new Map();
 const noRefresh = async () => undefined;
@@ -20,6 +26,12 @@ const noRefresh = async () => undefined;
 export type BackgroundTasksView = {
   rows: TaskRow[];
   activeCount: number;
+  /** Finished results that will still arrive as a new agent turn. */
+  awaitingCount: number;
+  /** Failed automatic deliveries still recoverable through an agent poll. */
+  failedCount: number;
+  /** A store outage or bounded list may hide remote results. */
+  incomplete: boolean;
   /** Whether the deployment lets users stop ordinary background tools. */
   toolsCancellable: boolean;
   isStopping: boolean;
@@ -257,6 +269,9 @@ export default function useBackgroundTasks({
   return {
     rows,
     activeCount: countActive(rows),
+    awaitingCount: countAwaitingDelivery(rows),
+    failedCount: countFailedDelivery(rows),
+    incomplete: data?.complete === false,
     toolsCancellable,
     isStopping,
     stopFailed,

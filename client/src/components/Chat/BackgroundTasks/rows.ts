@@ -2,11 +2,15 @@ import { ContentTypes } from 'librechat-data-provider';
 import type {
   TMessage,
   BackgroundTaskSummary,
+  BackgroundTaskDelivery,
   ParentSubagentSummary,
   SubagentThreadStatus,
 } from 'librechat-data-provider';
 
 export type TaskRowStatus = 'running' | 'stopping' | 'completed' | 'error' | 'cancelled';
+
+/** A finished result the agent has not received yet, or never will. */
+export type TaskRowDelivery = Extract<BackgroundTaskDelivery, 'pending' | 'failed'>;
 
 export type TaskRow = {
   id: string;
@@ -19,9 +23,15 @@ export type TaskRow = {
   detail?: string;
   /** Tool cancel target. */
   taskId?: string;
+  messageId?: string;
+  toolCallId?: string;
+  stepId?: string;
+  threadId?: string;
+  eventOrigin?: boolean;
   status: TaskRowStatus;
   startedAt?: number;
   settledAt?: number;
+  delivery?: TaskRowDelivery;
   /** Subagent cancel target; present only while the child can still be stopped. */
   subagent?: { threadId: string; taskId: string };
 };
@@ -87,19 +97,31 @@ export function findToolCallArgs(
 
 export type ToolCallDescriber = (args: ToolCallArgs) => Pick<TaskRow, 'title' | 'detail'>;
 
+const undelivered = (task: BackgroundTaskSummary): TaskRowDelivery | undefined =>
+  task.status !== 'running' && (task.delivery === 'pending' || task.delivery === 'failed')
+    ? task.delivery
+    : undefined;
+
 const toolRow = (
   task: BackgroundTaskSummary,
   described: Pick<TaskRow, 'title' | 'detail'>,
-): TaskRow => ({
-  id: `tool:${task.taskId}`,
-  kind: 'tool',
-  name: task.toolName,
-  taskId: task.taskId,
-  ...described,
-  status: task.status === 'running' && task.cancellationRequested ? 'stopping' : task.status,
-  startedAt: time(task.startedAt),
-  settledAt: time(task.settledAt),
-});
+): TaskRow => {
+  const delivery = undelivered(task);
+  return {
+    id: `tool:${task.taskId}`,
+    kind: 'tool',
+    name: task.toolName,
+    taskId: task.taskId,
+    messageId: task.messageId,
+    toolCallId: task.toolCallId,
+    stepId: task.stepId,
+    ...described,
+    status: task.status === 'running' && task.cancellationRequested ? 'stopping' : task.status,
+    startedAt: time(task.startedAt),
+    settledAt: time(task.settledAt),
+    ...(delivery == null ? {} : { delivery }),
+  };
+};
 
 const subagentRow = (child: ParentSubagentSummary, stopping: ReadonlySet<string>): TaskRow => {
   const status = subagentStatus(child.status);
@@ -109,6 +131,11 @@ const subagentRow = (child: ParentSubagentSummary, stopping: ReadonlySet<string>
     id: `subagent:${subagentTaskKey(child.threadId, taskId)}`,
     kind: 'subagent',
     name: child.title,
+    taskId,
+    messageId: child.parentMessageId,
+    toolCallId: child.parentToolCallId,
+    threadId: child.threadId,
+    eventOrigin: child.origin === 'event',
     status: running && stopping.has(subagentTaskKey(child.threadId, taskId)) ? 'stopping' : status,
     startedAt: time(child.tasks.find((task) => task.taskId === taskId)?.createdAt),
     settledAt: running ? undefined : time(child.updatedAt),
@@ -117,6 +144,16 @@ const subagentRow = (child: ParentSubagentSummary, stopping: ReadonlySet<string>
 };
 
 const isActive = (row: TaskRow) => row.status === 'running' || row.status === 'stopping';
+
+/** A finished result still on its way to the agent keeps the task relevant. */
+const isAwaitingDelivery = (row: TaskRow) => row.delivery === 'pending';
+const isFailedDelivery = (row: TaskRow) => row.delivery === 'failed';
+
+const rank = (row: TaskRow): number => {
+  if (isActive(row)) return 3;
+  if (isAwaitingDelivery(row)) return 2;
+  return isFailedDelivery(row) ? 1 : 0;
+};
 
 /**
  * One list across both background kinds: active rows first, then the most
@@ -149,12 +186,22 @@ export function buildTaskRows({
   return rows
     .filter(
       (row) =>
-        isActive(row) || row.settledAt == null || now - row.settledAt <= RECENT_SUBAGENT_WINDOW_MS,
+        isActive(row) ||
+        isAwaitingDelivery(row) ||
+        isFailedDelivery(row) ||
+        row.settledAt == null ||
+        now - row.settledAt <= RECENT_SUBAGENT_WINDOW_MS,
     )
     .sort((left, right) => {
-      const active = Number(isActive(right)) - Number(isActive(left));
-      return active !== 0 ? active : (right.startedAt ?? 0) - (left.startedAt ?? 0);
+      const ranked = rank(right) - rank(left);
+      return ranked !== 0 ? ranked : (right.startedAt ?? 0) - (left.startedAt ?? 0);
     });
 }
 
 export const countActive = (rows: readonly TaskRow[]) => rows.filter(isActive).length;
+
+export const countAwaitingDelivery = (rows: readonly TaskRow[]) =>
+  rows.filter(isAwaitingDelivery).length;
+
+export const countFailedDelivery = (rows: readonly TaskRow[]) =>
+  rows.filter(isFailedDelivery).length;

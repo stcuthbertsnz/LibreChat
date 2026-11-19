@@ -35,9 +35,6 @@
 <a href="https://railway.com/deploy/librechat-official?referralCode=HI9hWz&utm_medium=integration&utm_source=readme&utm_campaign=librechat">
   <img src="https://railway.com/button.svg" alt="Deploy on Railway" height="30">
 </a>
-<a href="https://zeabur.com/templates/0X2ZY8">
-  <img src="https://zeabur.com/button.svg" alt="Deploy on Zeabur" height="30"/>
-</a>
 <a href="https://template.cloud.sealos.io/deploy?templateName=librechat">
   <img src="https://raw.githubusercontent.com/labring-actions/templates/main/Deploy-on-Sealos.svg" alt="Deploy on Sealos" height="30">
 </a>
@@ -51,17 +48,21 @@
   </a>
 </p>
 
-## 🚀 What's New in v0.8.8-rc4
+## 🚀 What's New in v0.8.9
 
-- **Public Agents API docs:** Serve an OpenAPI specification and interactive Swagger UI for inference, events, Agent management, and Skill management.
-- **Attached workspaces (highly experimental):** Isolate workspaces by conversation, load repository instructions, and use bounded queue waits and command timeouts.
-- **Trace Viewer:** Inspect model conversations as ordered steps with roles, Agent identity, tool rounds, previews, and cost.
-- **Skills:** Author or import a Skill and invoke it in the same Agent run, with safer rollback for failed imports.
-- **Agent activity:** Render system events as distinct turns and hold live activity to one stable row.
-- **MCP reliability:** Send per-request headers without hiding tools, coordinate OAuth refresh across replicas, and preserve credentials through provider outages.
-- **Performance:** Stream Markdown incrementally, virtualize model search, and reduce completed Agent message rendering work.
+- **Chat Projects:** Organize conversations with shared instructions and reference files.
+- **Account protection:** Register passkeys, change your email, and manage stronger account security controls.
+- **Agent Channels (beta):** Connect Agents to Slack with linked accounts, approvals, and feedback.
+- **Background Responses:** Save, review, cancel, and recover Agent API responses independently of a chat connection.
+- **SDK-backed Agents (experimental):** Register local or remote runtimes with authorized host-tool access.
+- **Tools and prompts:** Use MCP Apps, deferred Tool Search, clearer approvals, and Langfuse prompts in the catalog and Agent instructions.
+- **BYOM (highly experimental):** Enroll personal machines, select per-chat workspaces, copy attachments, and track pull requests.
+- **Agent controls:** Answer inline Ask User questions and follow resumable background Subagents with clearer task progress.
+- **Models:** Added Gemini 4 Hydrogen, GPT-6.1 Terra, Claude Fable 5.2, GPT Image 2.6 Sunburst/Flare, and restricted-access Mythos 5.2/GPT-6 Cyber.
+- **UI polish:** Deployment themes, chat controls, notifications, right-to-left layouts, restored drafts, thinking settings, and Read Aloud.
+- **Performance and security:** Faster chat loading, fewer composer re-renders, Node.js security updates, and stronger auth, file, and tool safeguards.
 
-Read the [full v0.8.8-rc4 changelog](https://www.librechat.ai/changelog/v0.8.8-rc4).
+Read the [full v0.8.9 changelog](https://www.librechat.ai/changelog/v0.8.9).
 
 # ✨ Features
 
@@ -106,7 +107,7 @@ Read the [full v0.8.8-rc4 changelog](https://www.librechat.ai/changelog/v0.8.8-r
 
 - 🎨 **Image Generation & Editing**
   - Text-to-image and image-to-image with [GPT-Image-1](https://www.librechat.ai/docs/features/image_gen#1--openai-image-tools-recommended)
-  - Text-to-image with [DALL-E (3/2)](https://www.librechat.ai/docs/features/image_gen#2--dalle-legacy), [Stable Diffusion](https://www.librechat.ai/docs/features/image_gen#3--stable-diffusion-local), [Flux](https://www.librechat.ai/docs/features/image_gen#4--flux), or any [MCP server](https://www.librechat.ai/docs/features/image_gen#5--model-context-protocol-mcp)
+  - Text-to-image with [Stable Diffusion](https://www.librechat.ai/docs/features/image_gen#3--stable-diffusion-local), [Flux](https://www.librechat.ai/docs/features/image_gen#4--flux), or any [MCP server](https://www.librechat.ai/docs/features/image_gen#5--model-context-protocol-mcp)
   - Produce stunning visuals from prompts or refine existing images with a single instruction
 
 - 💾 **Presets & Context Management**:  
