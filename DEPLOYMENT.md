@@ -10,16 +10,29 @@ There is no CI/CD or webhook auto-deploy in this repo — updates are a manual p
 ```
 cd ~/LibreChat
 git pull origin main
-docker compose -f deploy-compose.yml down
+docker compose -f deploy-compose.yml pull
 docker compose -f deploy-compose.yml up -d
-docker compose logs -f api
+docker compose -f deploy-compose.yml logs -f api
 ```
-The app/admin-panel/rag containers run prebuilt images from `registry.librechat.ai`, not a local build — so `git pull` mainly updates the bind-mounted config files (`deploy-compose.yml`, `.env`, `client/nginx.conf`, `librechat.yaml`, `branding/`, `skill/`). The `down` / `up -d` cycle recreates containers against `deploy-compose.yml` (picking up any newer app images and config changes), and tailing `docker compose logs -f api` right after is the quickest way to confirm the api container came back up cleanly before walking away.
+The `api` container runs this fork's own image, `ghcr.io/stcuthbertsnz/librechat-api:latest`, built from `Dockerfile.multi` (target `api-build`) by `.github/workflows/ghcr.yml` on every push to `main` that touches app code, `packages/`, the lockfile or the Dockerfile. A merge to `main` therefore ships fork changes (such as the conversation delete gate) only once that workflow has finished: check the run is green before pulling. The admin-panel and rag containers still run prebuilt upstream images from `registry.librechat.ai`.
+
+`git pull` updates the bind-mounted config files (`deploy-compose.yml`, `.env`, `client/nginx.conf`, `librechat.yaml`, `branding/`, `skill/`). `docker compose pull` fetches new images while the running containers keep serving, so a failed pull leaves production untouched. `up -d` then recreates only the containers whose image or config changed.
+
+### Pulling the private GHCR image
+The package is private (the organisation disables public packages), so the droplet must be logged in to `ghcr.io` once, with a personal access token (classic) that has only the `read:packages` scope, authorised for SSO if the organisation enforces it:
+```
+echo '<token>' | docker login ghcr.io -u <github-username> --password-stdin
+```
+The credential is stored unencrypted in `~/.docker/config.json`. If `docker compose pull` reports `denied` or `unauthorized` for `ghcr.io`, the token has expired or lost access: create a new one and log in again.
+
+### Rolling back the api image
+Before updating, note the image the api container is running: `docker compose -f deploy-compose.yml images`. Every build is also tagged `sha-<commit>`, so to pin a known-good build set the `api` service's `image:` to `ghcr.io/stcuthbertsnz/librechat-api:sha-<commit>` and run `up -d`. To fall back to upstream's unmodified build, set it to `registry.librechat.ai/librechat-ai/librechat-dev-api:latest` (this build has no conversation delete gate).
 
 ## Droplet-specific customizations (now tracked in git, as of commits aefa64dc3 / 399a7b6f2 on 2026-08-18)
 - `branding/favicon-32x32.png` and `favicon-16x16.png` — custom favicon, bind-mounted into the api container in `deploy-compose.yml`.
 - `admin-panel` service in `deploy-compose.yml` is bound to `127.0.0.1:3000` only — the admin panel is not exposed publicly; reach it via an SSH tunnel to the droplet.
 - `client/nginx.conf` — real production config: `server_name chat.stcuthberts.college`, HTTP (port 80) redirects to HTTPS, and a live SSL server block using Let's Encrypt certs at `/etc/letsencrypt/live/chat.stcuthberts.college/`.
+- Conversation delete is gated by a per-role permission (`CONVERSATIONS.DELETE`, default allowed). Turn it off for a role with `node config/set-conversation-delete-permission.js <roleName> false`; the Delete action then disappears from the conversation menu and the shift-held quick action. This only exists in the fork's image, not in upstream's.
 - Mongo's `depends_on`/`MONGO_URI` were removed from the api service's inline config in `deploy-compose.yml` — Mongo connection details are expected to come from `.env` / `env_file` instead of being hardcoded.
 
 These previously sat as uncommitted local edits on the droplet (meaning a plain `git pull` would fail with "local changes would be overwritten"). They've since been committed and pushed to `origin/main`, so future pulls should be clean unless someone edits these files directly on the server again without committing.
