@@ -28,7 +28,14 @@ const azure = {
   azureOpenAIApiVersion: '2025-04-01-preview',
 };
 
-describe.each(['gpt-6-sol', 'gpt-6-luna'])('%s requests', (model) => {
+const models = [
+  { model: 'gpt-6-sol', cost: 0.8915 },
+  { model: 'gpt-6.1-sol', cost: 0.8915 },
+  { model: 'gpt-6.1-terra', cost: 0.43575 },
+  { model: 'gpt-6-luna', cost: 0.044575 },
+];
+
+describe.each(models)('$model requests', ({ model, cost }) => {
   const config = (overrides: Partial<Parameters<typeof getOpenAILLMConfig>[0]> = {}) =>
     getOpenAILLMConfig({
       apiKey: 'test-key',
@@ -404,8 +411,7 @@ describe.each(['gpt-6-sol', 'gpt-6-luna'])('%s requests', (model) => {
       if (!chatCompletions) {
         const usage = { ...message.usage_metadata!, provider: Providers.OPENAI, model };
         // Full prompt crosses 272K: all reported categories use premium rates.
-        const expected = model === 'gpt-6-sol' ? 0.8915 : 0.044575;
-        expect(computeUsageCostUSD(usage, pricing)).toBeCloseTo(expected, 8);
+        expect(computeUsageCostUSD(usage, pricing)).toBeCloseTo(cost, 8);
         const spendTokens = jest.fn().mockResolvedValue(undefined);
         const spendStructuredTokens = jest.fn().mockResolvedValue(undefined);
         await recordCollectedUsage(

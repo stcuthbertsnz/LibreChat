@@ -41,6 +41,7 @@ jest.mock('~/server/middleware', () => {
   };
 });
 
+jest.mock('~/server/services/Config', () => require(MOCKS).appConfig());
 jest.mock('~/server/utils/import/fork', () => require(MOCKS).forkUtils());
 jest.mock('~/server/utils/import', () => require(MOCKS).importUtils());
 jest.mock('~/server/routes/files/multer', () => require(MOCKS).multerSetup());
@@ -50,6 +51,9 @@ jest.mock('~/server/services/Endpoints/assistants', () => require(MOCKS).assista
 jest.mock('~/server/services/Endpoints/agents/subagentThreadStore', () =>
   require(MOCKS).subagentThreadStore(),
 );
+jest.mock('~/server/services/Endpoints/agents/backgroundCompletion', () => ({
+  pendingBackgroundToolCompletions: { list: jest.fn() },
+}));
 
 describe('POST /api/convos/duplicate - Rate Limiting', () => {
   let app;

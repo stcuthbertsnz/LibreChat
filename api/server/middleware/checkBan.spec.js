@@ -61,7 +61,7 @@ describe('checkBan with namespaced Keyv stores and ObjectId user ids', () => {
 
   afterAll(async () => {
     await mongoose.disconnect();
-    await mongoServer.stop();
+    await mongoServer?.stop();
   });
 
   it('lets an unbanned OAuth user through without Redis', async () => {
@@ -73,6 +73,38 @@ describe('checkBan with namespaced Keyv stores and ObjectId user ids', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith();
     expect(req.banned).toBeUndefined();
+  });
+
+  it('isolates concurrent trigger violations to their user on the shared loopback transport', async () => {
+    const userId = new mongoose.Types.ObjectId();
+    const req = {
+      ip: '::1',
+      user: { id: userId.toString() },
+      headers: {},
+      _isAgentTrigger: true,
+    };
+    const errorMessage = { type: ViolationTypes.CONCURRENT };
+
+    await logViolation(req, createRes(), ViolationTypes.CONCURRENT, errorMessage, 20);
+    expect(errorMessage.ban).toBe(true);
+
+    const otherUserReq = {
+      ...req,
+      user: { id: new mongoose.Types.ObjectId().toString() },
+    };
+    const next = jest.fn();
+    await checkBan(otherUserReq, createRes(), next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(otherUserReq.banned).toBeUndefined();
+
+    const bannedUserRes = createRes();
+    const bannedUserNext = jest.fn();
+    await checkBan(req, bannedUserRes, bannedUserNext);
+
+    expect(bannedUserNext).not.toHaveBeenCalled();
+    expect(bannedUserRes.status).toHaveBeenCalledWith(403);
+    expect(req.banned).toBe(true);
   });
 
   it('enforces a ban recorded for the same user from another address', async () => {

@@ -4,6 +4,7 @@
  * These handlers convert LibreChat's internal graph events into OpenAI-compatible
  * streaming format (SSE with chat.completion.chunk objects).
  */
+import { createOpenAIToolCallStream as createAcceptedToolCallStream } from '@librechat/agents/openai';
 import type { Agents } from 'librechat-data-provider';
 import type { Graph } from '@librechat/agents';
 import type {
@@ -17,6 +18,7 @@ import type { UsageMetadata } from '~/stream/interfaces/IJobStore';
 import type { ToolExecuteOptions } from '~/agents/handlers';
 import { createToolExecuteHandler } from '~/agents/handlers';
 import { aggregateCollectedUsage } from '../usage';
+import { writeGuarded } from '~/utils/events';
 
 /**
  * Create a chat completion chunk in OpenAI format
@@ -46,11 +48,13 @@ export function createChunk(
 /** One synchronous output frame; HTTP connection and lifecycle stay with the caller. */
 export interface OpenAIWriter {
   write(frame: string): boolean | void;
+  writableEnded?: boolean;
+  destroyed?: boolean;
 }
 
 /** Write one Chat Completions frame through a caller-owned transport. */
 export function writeSSE(writer: OpenAIWriter, data: ChatCompletionChunk | string): void {
-  writer.write(`data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
+  writeGuarded(writer, `data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`);
 }
 
 /**
@@ -189,6 +193,8 @@ export const GraphEvents = {
   ON_MESSAGE_DELTA: 'on_message_delta',
   ON_REASONING_DELTA: 'on_reasoning_delta',
   ON_TOOL_EXECUTE: 'on_tool_execute',
+  ON_MODEL_RESPONSE: 'on_model_response',
+  ON_MODEL_TOOLS_CLAIMED: 'on_model_tools_claimed',
 } as const;
 
 /**
@@ -770,23 +776,20 @@ export function createOpenAIHandlers(
   config: OpenAIContentHandlerConfig,
   toolExecuteOptions?: ToolExecuteOptions,
 ): Record<string, EventHandler> {
-  /** One projection across both events, so a call keeps a single outward index. */
-  const toolCallStream = createOpenAIToolCallStream({
+  const target = 'aggregator' in config ? config.aggregator : config.tracker;
+  const toolCallProjection = createAcceptedToolCallStream({
     signal: config.signal,
-    toolCalls: 'aggregator' in config ? config.aggregator.toolCalls : config.tracker.toolCalls,
+    toolCalls: target.toolCalls,
     emit:
       'aggregator' in config
         ? undefined
         : (delta) => writeSSE(getStreamWriter(config), createChunk(config.context, delta)),
   });
-  const target = 'aggregator' in config ? config.aggregator : config.tracker;
-  target.finishToolCalls = toolCallStream.finish;
-  target.abortToolCalls = toolCallStream.abort;
+  target.finishToolCalls = toolCallProjection.finish;
+  target.abortToolCalls = toolCallProjection.abort;
   const handlers: Record<string, EventHandler> = {
+    ...toolCallProjection.handlers,
     [GraphEvents.ON_MESSAGE_DELTA]: new OpenAIMessageDeltaHandler(config),
-    [GraphEvents.ON_RUN_STEP_DELTA]: new OpenAIRunStepDeltaHandler(toolCallStream),
-    [GraphEvents.ON_RUN_STEP]: new OpenAIRunStepHandler(toolCallStream),
-    [GraphEvents.ON_RUN_STEP_COMPLETED]: new OpenAIRunStepHandler(toolCallStream),
     [GraphEvents.CHAT_MODEL_END]: new OpenAIModelEndHandler(config),
     [GraphEvents.CHAT_MODEL_STREAM]: new OpenAIChatModelStreamHandler(),
     [GraphEvents.TOOL_END]: new OpenAIToolEndHandler(),
@@ -807,14 +810,16 @@ export function sendFinalChunk(
   config: OpenAIContentStreamConfig,
   finishReason: ChatCompletionChunkChoice['finish_reason'] = 'stop',
   usageOverride?: CompletionUsage,
+  /** True when the map contains only accepted client-owned calls, not legacy run-step history. */
+  acceptedToolCallsOnly = false,
 ): void {
   const { context, tracker } = config;
   const writer = getStreamWriter(config);
   tracker.finishToolCalls?.();
 
-  // Determine finish reason based on content
+  // Legacy run-step history followed by text stays 'stop'; accepted client calls must be executed.
   let reason = finishReason;
-  if (tracker.toolCalls.size > 0 && !tracker.hasText) {
+  if (tracker.toolCalls.size > 0 && (acceptedToolCallsOnly || !tracker.hasText)) {
     reason = 'tool_calls';
   }
 
